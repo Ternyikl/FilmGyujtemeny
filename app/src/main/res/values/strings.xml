@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FilmGyujtemeny</string>
+    <string name="title_activity_film_details">FilmDetailsActivity</string>
 </resources>

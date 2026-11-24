@@ -1,10 +1,13 @@
 package com.example.filmgyujtemeny
 
+import android.R
 import android.R.attr.name
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,13 +19,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialTheme.colorScheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.filmgyujtemeny.ui.theme.FilmGyujtemenyTheme
+import kotlin.jvm.java
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,8 +50,33 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val prefs = getSharedPreferences("film_reszletek" ,MODE_PRIVATE)
         setContent {
-            MaterialTheme{
-                FilmScreen()
+
+            var userName by remember {
+                mutableStateOf(
+                    prefs.getString("userName","") ?: ""
+                )}
+
+            var darkMode by remember {
+                mutableStateOf(prefs.getBoolean("darkMode",false))
+            }
+
+
+            MaterialTheme(
+                colorScheme = if(darkMode) darkColorScheme() else lightColorScheme()
+            ){
+                filmScreen(
+                    userName = userName,
+                    darkMode = darkMode,
+                    onUserNameChange = {
+                        newName ->
+                        userName = newName
+                        prefs.edit().putString("userName", newName).apply()
+                    },
+                    onDarkModeChange = { enabled ->
+                        darkMode = enabled
+                        prefs.edit().putBoolean("darkMode", enabled).apply()
+                    }
+                )
             }
         }
     }
@@ -50,7 +84,12 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun FilmScreen() {
+fun filmScreen(
+    userName: String,
+    darkMode: Boolean,
+    onUserNameChange: (String) -> Unit,
+    onDarkModeChange: (Boolean) -> Unit
+) {
     val context = LocalContext.current
 
     val db = remember {
@@ -77,6 +116,14 @@ fun FilmScreen() {
         mutableStateOf<Int?>(null)
     }
 
+    var showNameDialog by remember {
+        mutableStateOf(userName.isBlank())
+    }
+
+    var nameInput by remember {
+        mutableStateOf(userName)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -87,6 +134,39 @@ fun FilmScreen() {
             text = "Film Gyűjtemény",
             style = MaterialTheme.typography.headlineMedium
         )
+
+        Spacer(Modifier.height(20.dp))
+
+        if(userName.isNullOrEmpty()){
+                Text(
+                    text = "Szia, ${userName}!\nÜdvözlünk a filmgyüjteményben"
+                )
+            }
+
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Button(
+                    onClick = {
+                        nameInput = userName
+                        showNameDialog = true
+                    }
+                ) { Text("Név módosítása")}
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Sötét mód")
+                    Switch(
+                        checked = darkMode,
+                        onCheckedChange = onDarkModeChange
+                    )
+                }
+            }
+        }
 
         Spacer(Modifier.height(20.dp))
 
@@ -111,8 +191,8 @@ fun FilmScreen() {
         Spacer(Modifier.height(12.dp))
 
         OutlinedTextField(
-            value = genre,
-            onValueChange = {genre = it},
+            value = rating,
+            onValueChange = {rating = it},
             label = { Text("Film értékelése: ")},
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -161,7 +241,7 @@ fun FilmScreen() {
             horizontalArrangement = Arrangement.SpaceBetween
         ){
             Text(
-                text = "FIlmek száma: ${films.size}",
+                text = "Filmek száma: ${films.size}",
                 style = MaterialTheme.typography.titleLarge
             )
             TextButton(
@@ -183,7 +263,28 @@ fun FilmScreen() {
             items(films, key= {it.id} ){
                     film ->
                 Card(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().clickable{
+                        val intent = Intent(
+                            context,
+                            FilmDetailsActivity::class.java
+                        )
+
+                        intent.putExtra(
+                            "title",
+                            film.title
+                        )
+                        intent.putExtra(
+                            "genre",
+                            film.genre
+                        )
+                        intent.putExtra(
+                            "rating",
+                            film.rating
+                        )
+
+                        context.startActivity(intent)
+
+                    }
                 ){
                     Column(
                         modifier = Modifier.fillMaxWidth()
@@ -226,6 +327,52 @@ fun FilmScreen() {
                 }
             }
         }
+        if(showNameDialog){
+            AlertDialog(
+                onDismissRequest = {
+                    if(userName.isNotBlank()){
+                        showNameDialog = false
+                    }
+                },
+                title = {
+                    Text("Felhasználó név")
+                },
+                text = {
+                    Column() {
+                        Text("Add meg a neved!")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = nameInput,
+                            onValueChange = {
+                                nameInput = it
+                            },
+                            label = {
+                                Text("Neved")
+                            }
+                        )
+                    }
+                },
+                    confirmButton = {
+                        TextButton(
+                            enabled = nameInput.isNotBlank(),
+                            onClick = {
+                                onUserNameChange(
+                                    nameInput.trim()
+                                )
+                            }
 
+                        ) { Text("Mentés")}
+                    },
+                dismissButton = {
+                    if(userName.isNotBlank()){
+                        TextButton(
+                            onClick = {
+                                showNameDialog = false
+                            }
+                        ) {  Text("Mégse")}
+                    }
+                }
+            )
+        }
     }
 }
