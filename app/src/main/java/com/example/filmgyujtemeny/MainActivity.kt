@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -36,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -124,6 +126,28 @@ fun filmScreen(
         mutableStateOf(userName)
     }
 
+    var filmToDeleteId by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var searchQuery by remember {
+        mutableStateOf("")
+    }
+
+    var sortMode by remember {
+        mutableStateOf(0)
+    }
+
+    val displayedFilms = films
+        .filter { it.title.contains(searchQuery.trim(), ignoreCase = true) }
+        .let { list ->
+            when (sortMode) {
+                1 -> list.sortedByDescending { it.rating }
+                2 -> list.sortedBy { it.rating }
+                else -> list
+            }
+        }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,7 +161,7 @@ fun filmScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        if(userName.isNullOrEmpty()){
+        if(userName.isNotBlank()){
                 Text(
                     text = "Szia, ${userName}!\nÜdvözlünk a filmgyüjteményben"
                 )
@@ -146,20 +170,23 @@ fun filmScreen(
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
+                TextButton(
                     onClick = {
                         nameInput = userName
                         showNameDialog = true
                     }
-                ) { Text("Név módosítása")}
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                ) { Text("Név módosítása") }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sötét mód")
+                    Spacer(Modifier.width(8.dp))
                     Switch(
                         checked = darkMode,
                         onCheckedChange = onDarkModeChange
@@ -238,18 +265,40 @@ fun filmScreen(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ){
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = "Filmek száma: ${films.size}",
                 style = MaterialTheme.typography.titleLarge
             )
-            TextButton(
-                onClick = {
-                    films = db.getAllfilms()
+            Row {
+                TextButton(
+                    onClick = { sortMode = (sortMode + 1) % 3 }
+                ) {
+                    Text(
+                        when (sortMode) {
+                            1 -> "Értékelés ↓"
+                            2 -> "Értékelés ↑"
+                            else -> "Rendezés"
+                        }
+                    )
                 }
-            ) { Text("Frissités") }
+                TextButton(
+                    onClick = { films = db.getAllfilms() }
+                ) { Text("Frissités") }
+            }
         }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Keresés cím alapján") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
 
         Spacer(Modifier.height(12.dp))
 
@@ -260,7 +309,7 @@ fun filmScreen(
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(films, key= {it.id} ){
+            items(displayedFilms, key= {it.id} ){
                     film ->
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable{
@@ -288,15 +337,13 @@ fun filmScreen(
                 ){
                     Column(
                         modifier = Modifier.fillMaxWidth()
-                            .padding(10.dp)
+                            .padding(20.dp)
                     ) {
                         Text(
-                            text = film.title,
+                            text = "   " + film.title,
                             style = MaterialTheme.typography.titleMedium
                         )
                         Row(){
-
-
                             TextButton(
                                 onClick = {
                                     editingId = film.id
@@ -309,18 +356,9 @@ fun filmScreen(
                             }
 
                             TextButton(
-                                onClick = {
-                                    db.deleteFilm(film.id)
-                                    films = db.getAllfilms()
-                                    if(editingId == film.id){
-                                        title = ""
-                                        genre = ""
-                                        rating = ""
-                                        editingId = null
-                                    }
-                                }
+                                onClick = { filmToDeleteId = film.id }
                             ) {
-                                Text("Törlés", color= Color.Red)
+                                Text("Törlés", color = Color.Red)
                             }
                         }
                     }
@@ -359,6 +397,7 @@ fun filmScreen(
                                 onUserNameChange(
                                     nameInput.trim()
                                 )
+                                showNameDialog = false
                             }
 
                         ) { Text("Mentés")}
@@ -371,6 +410,35 @@ fun filmScreen(
                             }
                         ) {  Text("Mégse")}
                     }
+                }
+            )
+        }
+        filmToDeleteId?.let { deleteId ->
+            val filmTitle = films.firstOrNull { it.id == deleteId }?.title ?: ""
+
+            AlertDialog(
+                onDismissRequest = { filmToDeleteId = null },
+                title = { Text("Film törlése") },
+                text = { Text("Biztosan törölni szeretnéd a(z) \"$filmTitle\" filmet?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            db.deleteFilm(deleteId)
+                            films = db.getAllfilms()
+                            if (editingId == deleteId) {
+                                title = ""
+                                genre = ""
+                                rating = ""
+                                editingId = null
+                            }
+                            filmToDeleteId = null
+                        }
+                    ) { Text("Törlés", color = Color.Red) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { filmToDeleteId = null }
+                    ) { Text("Mégse") }
                 }
             )
         }
